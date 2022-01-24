@@ -1,0 +1,340 @@
+---
+title: "Species Recognition TensorFlow"
+author: "Markus Fjellstad Israelsen"
+date: "24.01.2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+## Load library
+```{r Library, echo = FALSE, warning = FALSE}
+
+# Set up tensorflow
+#devtools::install_github("rstudio/tensorflow")
+#install_tensorflow() #will automatically install miniconda - accept
+
+# Set up Keras
+#install.packages("keras")
+#library(keras)
+#install_keras()
+
+## Set up Bioconductor and EBImage
+# if(!requireNamespace("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+# BiocManager::install("EBImage")
+
+# Load library
+library(keras)
+library(tensorflow)
+library(tidyr)
+library(ggplot2)
+library(EBImage)
+library(gsubfn)
+
+```
+
+
+## Testing the image tools
+```{r Tool testing, eval = FALSE}
+
+# Exploring dataset
+testImg.path = paste0(getwd(), "/Images/Tomme/")
+img = readImage(paste0(testImg.path, "IMG_0659.JPG"))
+
+print(img) # same for all Reconyx images (3 channels, independent of BW or color), with dimensions (W) 2048 x (H) 1536 x (F) 3 (frames/channels)
+getFrames(img, type = "total") #unmasks all channels
+display(img, method = "raster", all = TRUE) #prints the image
+hist(img) #shows image histogram (RGB)
+
+```
+
+## Work on sample images
+```{r Test on sample imgs, eval = FALSE}
+
+# Images path
+testImg.path = paste0(getwd(), "/Images/Tomme/")
+
+testImg = list.files(testImg.path)[3:length(list.files(testImg.path))]
+fox.samp = testImg[grep("_rev", testImg)]
+empty.samp = testImg[-grep("_rev", testImg)]
+
+ani.samp = sample(fox.samp) # shuffles the order and adds the images from the set directory
+Asamples = list(NULL)
+for(i in 1:length(ani.samp)) { # NB! takes about 10 seconds for 50 regular images + creates a large list (10-15 MB) - must be scaled/portioned to handle 10000 images in the future
+  Asamples[[i]] = readImage(paste0(testImg.path, ani.samp[i])) # reads each image (in shuffled order)
+  Asamples[[i]] = Asamples[[i]][1:2048,32:1470, ] # crop top and bottom black bars
+  #Asamples[[i]] = resize(Asamples[[i]], 100, 100) # resize each image to 100x100 pixels
+}
+
+animals = Asamples
+rm(ani.samp, fox.samp, testImg, Asamples)
+
+#NB! Keras needs all images to be combined in a stack
+empty.samp = sample(empty.samp) # shuffles the order and adds the images from the set directory
+Esamples = list(NULL)
+for(i in 1:length(empty.samp)) { 
+  Esamples[[i]] = readImage(paste0(testImg.path, empty.samp[i])) # reads each image (in shuffled order)
+  Esamples[[i]] = Esamples[[i]][1:2048,32:1470, ] # crop top and bottom black bars
+ # Esamples[[i]] = resize(Esamples[[i]], 100, 100) # resize each image to 100x100 pixels
+}
+
+animals = Asamples # pictures with animals in a separate list
+empty = Esamples # pictures without animals in a separate list
+
+train_pool = c(animals[1:30], empty[1:30]) # vector of training images (30 first images of each list)
+
+train = aperm(combine(train_pool), c(4,1,2,3)) # combined and stacked training set of images
+
+test_pool = c(animals[31:49], empty[31:49]) # vector of test images (3 last images of each list)
+
+test = aperm(combine(test_pool), c(4,1,2,3)) #combined and stacked test set of images
+
+# View test-data
+par(mfrow=c(2,3))
+for(i in 1:6) {
+  plot(test_pool[[i]])
+}
+par(mfrow=c(1,1))
+
+# One Hot encoding - to create categorical vectors corresponding to input data
+train_y = c(rep(0,30),rep(1,30))
+test_y = c(rep(0,19),rep(1,19))
+train_lab = to_categorical(train_y) #categorical vector for training
+test_lab = to_categorical(test_y) #categorical vector for test classes
+
+## Building the architecture
+model.card = keras_model_sequential() #create Keras model
+model.card %>% #initiate model
+  layer_conv_2d(filters = 40, kernel_size = c(4,4), activation = 'relu', input_shape = c(100,100,3)) %>% #first convoluted layer
+  layer_conv_2d(filters = 40, kernel_size = c(4,4), activation = 'relu') %>% #second convoluted layer
+  layer_max_pooling_2d(pool_size = c(4,4)) %>% #max pooling
+  layer_dropout(rate = 0.25) %>% #drop out layer
+  layer_conv_2d(filters = 80, kernel_size = c(4,4), activation = 'relu') %>% #third convoluted layer
+  layer_conv_2d(filters = 80, kernel_size = c(4,4), activation = 'relu') %>% #fourth convoluted layer
+  layer_max_pooling_2d(pool_size = c(4,4)) %>% #max pooling
+  layer_dropout(rate = 0.35) %>% #drop out layer
+  layer_flatten() %>% #flattening final stack of feature maps
+  layer_dense(units = 256, activation = 'relu') %>% #hidden layer
+  layer_dropout(rate = 0.25) %>% #drop out layer
+  layer_dense(units = 2, activation = "softmax") %>% #final layer
+  compile(loss = 'categorical_crossentropy',
+          optimizer = optimizer_adam(),
+          metrics = c("accuracy"))
+
+summary(model.card)
+
+## Model Fitting
+st <- Sys.time()
+paste("Start:", st)
+histor <- model.card %>%
+  fit(train, 
+      train_lab,
+      epochs = 100,
+      batch_size = 40,
+      validation_split = 0.2)
+et <- Sys.time()
+paste("End:", et)
+paste("Model run time: ", round(difftime(et, st, units = "secs"), 2), " seconds", sep = "")
+
+plot(histor) #smooth plot of the training progress
+
+## Model validation
+model.card %>% evaluate(train, train_lab) #evaluation of the training set
+pred = model.card %>% predict(train) # classification
+train_result = table(Predicted = pred, Actual = train_y) #results
+
+model.card %>% evaluate(test, test_lab) # evaluation of the test set
+pred1 = model.card %>% predict(test) # classification
+test_result <- table(Predicted = pred1, Actual = test_y) #results
+
+rownames(train_result) <- rownames(test_result) <- colnames(train_result) <- colnames(test_result) <- c("Animals","Empty")
+
+print(train_result)
+print(test_result)
+
+```
+
+## BELOW NOT DONE
+### Create an overarching species recognition function to test memory usage and time taken to complete
+```{r, eval = FALSE}
+
+speciesRecognition = function(animalDir, emptyDir, saturation){
+
+dyr.samp = sample(dir(animalDir)) #shuffles the order and adds the images from the set directory
+
+# Check that the given path is an actual folder with images
+if(length(dyr.samp) == 0){
+  return("Cannot find any images in 'animalDirectory', please check the supplied pathway")
+}
+
+Dsamples = list(NULL)
+Dflopped = list(NULL)
+for(i in 1:length(dyr.samp)) { 
+  Dsamples[[i]] = readImage(paste(animalDir, "/", dyr.samp[i], sep = "")) 
+  Dflopped[[i]] = flop(Dsamples[[i]])
+  Dsamples[[i]] = Dsamples[[i]][1:2048,32:1092,] #crop top and bottom black bars
+  Dflopped[[i]] = Dflopped[[i]][1:2048, 32:1092,] # crop top and bottom black bars
+  Dsamples[[i]] = resize(Dsamples[[i]], 100, 100) #resize each image to 100x100 pixels
+  Dflopped[[i]] = resize(Dflopped[[i]], 100, 100)
+  # if(saturation == "gray"){
+  #   Dsamples[[i]] = channel(Dsamples[[i]], mode = "gray")
+  #   Dflopped[[i]] = channel(Dflopped[[i]], mode = "gray")
+  # }
+}
+
+Dsamples = append(Dsamples, Dflopped)
+Dsamples = sample(Dsamples)
+
+# Pictures with animals in a separate list 
+dyr = Dsamples 
+
+rm(Dflopped) # Remove unnecessary large variables from the environment
+
+# Empty images
+tom.samp = list.files(emptyDir, pattern = ".JPG") # Make sure that all files are ".JPG"
+tom.samp = sample(tom.samp, length(Dsamples)) #shuffles the order and adds the images from the set directory. Samples the same amount of images as there are in Dsamples
+
+# Check that the given path is an actual folder with images
+if(length(tom.samp) == 0){
+  return("Cannot find any images in 'animalDirectory', please check the supplied pathway")
+}
+
+Tsamples = list(NULL)
+for(i in 1:length(tom.samp)) { 
+  Tsamples[[i]] = readImage(paste(emptyDir, "/", tom.samp[i], sep = "")) #reads each image (in shuffled order)
+  Tsamples[[i]] = Tsamples[[i]][1:2048, 32:1092,] #crop top and bottom black bars
+  Tsamples[[i]] = resize(Tsamples[[i]], 100, 100) #re-size each image to 100x100 pixels
+  if(saturation == "gray"){
+    Tsamples[[i]] = channel(Tsamples[[i]], mode = "gray")
+  }
+}
+
+# Pictures without animals in a separate list
+tomme = Tsamples
+rm(Tsamples) # Remove unnecessary large variables from the environment
+rm(Dsamples) # Remove unnecessary large variables from the environment
+
+train_pool = c(dyr[1:350], tomme[1:350]) #vector of training images (400 first images of each list)
+
+if(saturation == "gray"){
+  train = aperm(combine(train_pool), c(3, 1, 2))
+  # Remove unnecessary large variables from the environment
+  rm(train_pool)
+  test_pool = c(dyr[351:375], tomme[351:375]) #vector of test images
+  # Remove unnecessary large variables from the environment
+  rm(dyr)
+  rm(tomme)
+  test = aperm(combine(test_pool), c(3, 2, 1)) #combined and stacked test set of images
+  rm(test_pool)
+}
+
+if(saturation != "gray"){
+  train = aperm(combine(train_pool), c(4, 1, 2, 3)) #combined and stacked training set of images
+  # Remove unnecessary large variables from the environment
+  rm(train_pool)
+  test_pool = c(dyr[351:375], tomme[351:375]) #vector of test images
+  # Remove unnecessary large variables from the environment
+  rm(dyr)
+  rm(tomme)
+  test = aperm(combine(test_pool), c(4,1,2,3)) #combined and stacked test set of images
+  rm(test_pool)
+}
+
+#One Hot encoding - to create categorical vectors corresponding to input data
+train_y = c(rep(0, 350), rep(1, 350))
+test_y = c(rep(0, 25), rep(1, 25))
+train_lab = to_categorical(train_y) #categorical vector for training
+test_lab = to_categorical(test_y) #categorical vector for test classes
+
+## Building the architecture
+model.card = keras_model_sequential() #create Keras model
+model.card %>% #initiate model
+  layer_conv_2d(filters = 40, kernel_size = c(4,4), activation = 'relu', input_shape = c(100, 100,3)) %>% #first convoluted layer
+  layer_conv_2d(filters = 40, kernel_size = c(4,4), activation = 'relu') %>% #second convoluted layer
+  layer_max_pooling_2d(pool_size = c(4,4)) %>% #max pooling
+  layer_dropout(rate = 0.25) %>% #drop out layer
+  layer_conv_2d(filters = 80, kernel_size = c(4,4), activation = 'relu') %>% #third convoluted layer
+  layer_conv_2d(filters = 80, kernel_size = c(4,4), activation = 'relu') %>% #fourth convoluted layer
+  layer_max_pooling_2d(pool_size = c(4,4)) %>% #max pooling
+  layer_dropout(rate = 0.35) %>% #drop out layer
+  layer_flatten() %>% #flattening final stack of feature maps
+  layer_dense(units = 256, activation = 'relu') %>% #hidden layer
+  layer_dropout(rate = 0.25) %>% #drop out layer
+  layer_dense(units = 2, activation = "softmax") %>% #final layer
+  compile(loss = 'categorical_crossentropy',
+          optimizer = optimizer_adam(),
+          metrics = c("accuracy"))
+
+
+## Model Fitting
+histor = model.card %>%
+  fit(train, 
+      train_lab,
+      epochs = 100,
+      batch_size = 40,
+      validation_split = 0.2)
+plot(histor)
+
+## Model validation
+model.card %>% evaluate(train, train_lab) #evaluation of the training set
+pred = model.card %>% predict_classes(train) #classification
+train_result = table(Predicted = pred, Actual = train_y) #results
+
+model.card %>% evaluate(test, test_lab) #evaluation of the test set
+pred1 = model.card %>% predict_classes(test) #classification
+test_result = table(Predicted = pred1, Actual = test_y) #results
+
+rownames(train_result) <- rownames(test_result) <- colnames(train_result) <- colnames(test_result) <- c("Dyr","Tomme")
+
+return(histor, model.card, train_result, test_result, pred, pred1)
+
+}
+
+
+```
+
+## Run the species recognition function
+```{r, eval = FALSE}
+
+# Store the image directories as variables and supply them to the species recognition function
+animalDir = "C:/Users/markus.israelsen/OneDrive - NINA/GBIF Viltkamera/Species Recognition/Lirype testbilder/Dyr"
+emptyDir = "C:/Users/markus.israelsen/OneDrive - NINA/GBIF Viltkamera/Species Recognition/Lirype testbilder/Tomme"
+
+# Color images, 212 images in animal and empty
+st = Sys.time()
+paste("Color images, 212 images in animal and empty, Start:", st)
+list[model.card, train_result, test_result] = speciesRecognition(animalDirectory = animalDir, emptyDirectory = emptyDir)
+et = Sys.time()
+paste("End:", et)
+paste("Color images, 212 images in animal and empty, Model run time: ", round(difftime(et, st, units = "min"), 2), " min", sep = "")
+
+# Save the time it took
+col_212img = round(difftime(et, st, units = "min"), 2)
+
+
+# Color images, 424 images in animal and empty
+st = Sys.time()
+paste("Color images, 424 images in animal and empty, Start:", st)
+list[a, b, c, d, e, f] = speciesRecognition(animalDirectory = animalDir, emptyDirectory = emptyDir)
+et = Sys.time()
+paste("End:", et)
+paste("Color images, 424 images in animal and empty, Model run time: ", round(difftime(et, st, units = "min"), 2), " min", sep = "")
+
+# Save the time it took
+col_424img = round(difftime(et, st, units = "min"), 2)
+
+
+# Grayscale images, 350 images in animal and empty
+st = Sys.time()
+paste("Grayscale images, 350 images in animal and empty, Start:", st)
+list[model.card, train_result, test_result] = speciesRecognition(animalDir = animalDir, emptyDir = emptyDir, saturation = "gray")
+et = Sys.time()
+paste("End:", et)
+paste("Grayscale images, 350 images in animal and empty, Model run time: ", round(difftime(et, st, units = "min"), 2), " min", sep = "")
+
+# Save the time it took
+gray_350img = round(difftime(et, st, units = "min"), 2)
+
+```
+
