@@ -6,9 +6,25 @@ output: html_document
 editor_options: 
   chunk_output_type: console
 ---
-Load library
-```{r}
 
+## Load library
+```{r Library, echo = FALSE, warning = FALSE}
+
+# Set up tensorflow
+#devtools::install_github("rstudio/tensorflow")
+#install_tensorflow() #will automatically install miniconda - accept
+
+# Set up Keras
+#install.packages("keras")
+#library(keras)
+#install_keras()
+
+## Set up Bioconductor and EBImage
+# if(!requireNamespace("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+# BiocManager::install("EBImage")
+
+# Load library
 library(keras)
 library(tensorflow)
 library(tidyr)
@@ -18,224 +34,73 @@ library(gsubfn)
 
 ```
 
-// Basic Image Classification
-Data management
-```{r}
 
-fashion_mnist = dataset_fashion_mnist()
+## Testing the image tools
+```{r Tool testing, eval = FALSE}
 
-c(train_images, train_labels) %<-% fashion_mnist$train
-c(test_images, test_labels) %<-% fashion_mnist$test
+# Exploring dataset
+testImg.path = paste0(getwd(), "/Images/Tomme/")
+img = readImage(paste0(testImg.path, "IMG_0659.JPG"))
 
-class_names = c('T-shirt/top',
-                'Trouser',
-                'Pullover',
-                'Dress',
-                'Coat', 
-                'Sandal',
-                'Shirt',
-                'Sneaker',
-                'Bag',
-                'Ankle boot')
-
-
-dim(train_images)
-dim(train_labels)
-
-dim(test_images)
-dim(test_labels)
-
-image_1 <- as.data.frame(train_images[1, , ])
-colnames(image_1) <- seq_len(ncol(image_1))
-image_1$y <- seq_len(nrow(image_1))
-image_1 <- gather(image_1, "x", "value", -y)
-image_1$x <- as.integer(image_1$x)
-
-ggplot(image_1, aes(x = x, y = y, fill = value)) +
-  geom_tile() +
-  scale_fill_gradient(low = "white", high = "black", na.value = NA) +
-  scale_y_reverse() +
-  theme_minimal() +
-  theme(panel.grid = element_blank())   +
-  theme(aspect.ratio = 1) +
-  xlab("") +
-  ylab("")
-
-train_images <- train_images / 255
-test_images <- test_images / 255
-
-
-par(mfcol=c(5,5))
-par(mar=c(0, 0, 1.5, 0), xaxs='i', yaxs='i')
-for (i in 1:25) { 
-  img <- train_images[i, , ]
-  img <- t(apply(img, 2, rev)) 
-  image(1:28, 1:28, img, col = gray((0:255)/255), xaxt = 'n', yaxt = 'n',
-        main = paste(class_names[train_labels[i] + 1]))
-}
-
-
-```
-
-Build the model
-```{r}
-
-model <- keras_model_sequential()
-model %>%
-  layer_flatten(input_shape = c(28, 28)) %>%
-  layer_dense(units = 128, activation = 'relu') %>%
-  layer_dense(units = 10, activation = 'softmax')
-
-model %>% compile(
-  optimizer = 'adam', 
-  loss = 'sparse_categorical_crossentropy',
-  metrics = c('accuracy')
-)
-
-model %>% fit(train_images, train_labels, epochs = 5, verbose = 2)
-
-score <- model %>% evaluate(test_images, test_labels, verbose = 0)
-
-cat('Test loss:', score[1], "\n")
-
-cat('Test accuracy:', score[2], "\n")
-
-```
-
-Make predictions
-```{r}
-
-predictions <- model %>% predict(test_images)
-predictions[1, ]
-which.max(predictions[1, ])
-
-class_pred <- model %>% predict_classes(test_images)
-class_pred[1:20]
-
-par(mfcol=c(5,5))
-par(mar=c(0, 0, 1.5, 0), xaxs='i', yaxs='i')
-for (i in 1:25) { 
-  img <- test_images[i, , ]
-  img <- t(apply(img, 2, rev)) 
-  # subtract 1 as labels go from 0 to 9
-  predicted_label <- which.max(predictions[i, ]) - 1
-  true_label <- test_labels[i]
-  if (predicted_label == true_label) {
-    color <- '#008800' 
-  } else {
-    color <- '#bb0000'
-  }
-  image(1:28, 1:28, img, col = gray((0:255)/255), xaxt = 'n', yaxt = 'n',
-        main = paste0(class_names[predicted_label + 1], " (",
-                      class_names[true_label + 1], ")"),
-        col.main = color)
-}
-
-img <- test_images[1, , , drop = FALSE]
-dim(img)
-
-predictions <- model %>% predict(img)
-predictions
-
-class_pred <- model %>% predict_classes(img)
-class_pred
-
-```
-// 
-
-// A laymans guide to building your first image classification model in R using Keras
-```{r}
-
-if (!requireNamespace("BiocManager", quietly = TRUE))
-install.packages("BiocManager")
-BiocManager::install("EBImage")
-library(EBImage)
-
-setwd("C:/Users/markus.israelsen/OneDrive - NINA/GBIF Viltkamera/Species Recognition/EBImage_4.28.1/EBImage/images") # To access the images of Spades suit.
-  
-card = readImage("ace_of_spades (2).png") # Reading an image from the
-                                         # dataset
-print(card) # Print the details of image
-
-```
-//
-
-
-// Fjellrev test
-```{r}
-
-# Images with fjellrev
-
-## Set up tensorflow
-#devtools::install_github("rstudio/tensorflow")
-library(tensorflow)
-#install_tensorflow() #will automatically install miniconda - accept
-
-## Set up Keras
-#install.packages("keras")
-library(keras)
-#install_keras()
-
-## Set up Bioconductor and EBImage
-#if(!requireNamespace("BiocManager", quietly = TRUE))
-#  install.packages("BiocManager")
-#BiocManager::install("EBImage")
-library(EBImage)
-
-#Exploring dataset
-setwd("C:/Users/markus.israelsen/OneDrive - NINA/GBIF Viltkamera/Species Recognition/Lars Test Bilder/DYR/Test")
-img <- readImage("IMG_0013.JPG")
-
-print(img) #same for all Reconyx images (3 channels, independent of BW or color), with dimensions (W) 2048 x (H) 1536 x (F) 3 (frames/channels)
+print(img) # same for all Reconyx images (3 channels, independent of BW or color), with dimensions (W) 2048 x (H) 1536 x (F) 3 (frames/channels)
 getFrames(img, type = "total") #unmasks all channels
 display(img, method = "raster", all = TRUE) #prints the image
 hist(img) #shows image histogram (RGB)
 
-dyr.samp <- sample(dir()) #shuffles the order and adds the images from the set directory
-Dsamples <- list(NULL)
-for(i in 1:length(dyr.samp)) { #NB! takes about 10 seconds for 50 regular images + creates a large list (10-15 MB) - must be scaled/portioned to handle 10000 images in the future
-  Dsamples[[i]] <- readImage(dyr.samp[i]) #reads each image (in shuffled order)
-  Dsamples[[i]] <- Dsamples[[i]][1:2048,32:1470, ] #crop top and bottom black bars
-  Dsamples[[i]] <- resize(Dsamples[[i]], 100, 100) #resize each image to 100x100 pixels
+```
+
+## Work on sample images
+```{r Test on sample imgs, eval = FALSE}
+
+# Create a new folder for the images with foxes
+testImg = list.files(testImg.path)[2:length(list.files(testImg.path))]
+fox.samp = testImg[grep("_rev", testImg)]
+empty.samp = testImg[-grep("_rev", testImg)]
+
+ani.samp = sample(fox.samp) # shuffles the order and adds the images from the set directory
+Asamples = list(NULL)
+for(i in 1:length(ani.samp)) { # NB! takes about 10 seconds for 50 regular images + creates a large list (10-15 MB) - must be scaled/portioned to handle 10000 images in the future
+  Asamples[[i]] = readImage(paste0(testImg.path, ani.samp[i])) # reads each image (in shuffled order)
+  Asamples[[i]] = Asamples[[i]][1:2048,32:1470, ] # crop top and bottom black bars
+  Asamples[[i]] = resize(Asamples[[i]], 100, 100) # resize each image to 100x100 pixels
 }
 
 
-#NB! Keras needs all images to combined in a stack
-setwd("C:/Users/markus.israelsen/OneDrive - NINA/GBIF Viltkamera/Species Recognition/Lars Test Bilder/TOMME/Test")
-tom.samp <- sample(dir()) #shuffles the order and adds the images from the set directory
-Tsamples <- list(NULL)
-for(i in 1:length(tom.samp)) { #NB! takes about 10 seconds for 50 regular images + creates a large list (10-15 MB) - must be scaled/portioned to handle 10000 images in the future
-  Tsamples[[i]] <- readImage(tom.samp[i]) #reads each image (in shuffled order)
-  Tsamples[[i]] <- Tsamples[[i]][1:2048,32:1470, ] #crop top and bottom black bars
-  Tsamples[[i]] <- resize(Tsamples[[i]], 100, 100) #resize each image to 100x100 pixels
+#NB! Keras needs all images to be combined in a stack
+empty.samp = sample(empty.samp) # shuffles the order and adds the images from the set directory
+Esamples = list(NULL)
+for(i in 1:length(empty.samp)) { 
+  Esamples[[i]] = readImage(paste0(testImg.path, empty.samp[i])) # reads each image (in shuffled order)
+  Esamples[[i]] = Esamples[[i]][1:2048,32:1470, ] # crop top and bottom black bars
+  Esamples[[i]] = resize(Esamples[[i]], 100, 100) # resize each image to 100x100 pixels
 }
 
-dyr <- Dsamples #pictures with animals in a separate list
-tomme <- Tsamples #pictures without animals in a separate list
+animals = Asamples # pictures with animals in a separate list
+empty = Esamples # pictures without animals in a separate list
 
-train_pool <- c(dyr[1:30], tomme[1:30]) #vector of training images (40 first images of each list)
+train_pool = c(animals[1:30], empty[1:30]) # vector of training images (40 first images of each list)
 
-train <- aperm(combine(train_pool), c(4,1,2,3)) #combined and stacked training set of images
+train = aperm(combine(train_pool), c(4,1,2,3)) # combined and stacked training set of images
 
-test_pool <- c(dyr[31:33], tomme[31:33]) #vector of test images (3 last images of each list)
+test_pool = c(animals[31:49], empty[31:49]) # vector of test images (3 last images of each list)
 
-test <- aperm(combine(test_pool), c(4,1,2,3)) #combined and stacked test set of images
+test = aperm(combine(test_pool), c(4,1,2,3)) #combined and stacked test set of images
 
-#View test-data
+# View test-data
 par(mfrow=c(2,3))
 for(i in 1:6) {
   plot(test_pool[[i]])
 }
 par(mfrow=c(1,1))
 
-#One Hot encoding - to create categorical vectors corresponding to input data
-train_y <- c(rep(0,30),rep(1,30))
-test_y <- c(rep(0,3),rep(1,3))
-train_lab <- to_categorical(train_y) #categorical vector for training
-test_lab <- to_categorical(test_y) #categorical vector for test classes
+# One Hot encoding - to create categorical vectors corresponding to input data
+train_y = c(rep(0,30),rep(1,30))
+test_y = c(rep(0,19),rep(1,19))
+train_lab = to_categorical(train_y) #categorical vector for training
+test_lab = to_categorical(test_y) #categorical vector for test classes
 
 ## Building the architecture
-model.card <- keras_model_sequential() #create Keras model
+model.card = keras_model_sequential() #create Keras model
 model.card %>% #initiate model
   layer_conv_2d(filters = 40, kernel_size = c(4,4), activation = 'relu', input_shape = c(100,100,3)) %>% #first convoluted layer
   layer_conv_2d(filters = 40, kernel_size = c(4,4), activation = 'relu') %>% #second convoluted layer
@@ -272,158 +137,23 @@ plot(histor) #smooth plot of the training progress
 
 ## Model validation
 model.card %>% evaluate(train, train_lab) #evaluation of the training set
-pred <- model.card %>% predict_classes(train) #classification
-train_result <- table(Predicted = pred, Actual = train_y) #results
+pred = model.card %>% predict(train) # classification
+train_result = table(Predicted = pred, Actual = train_y) #results
 
-model.card %>% evaluate(test, test_lab) #evaluation of the test set
-pred1 <- model.card %>% predict_classes(test) #classification
+model.card %>% evaluate(test, test_lab) # evaluation of the test set
+pred1 = model.card %>% predict(test) # classification
 test_result <- table(Predicted = pred1, Actual = test_y) #results
 
-rownames(train_result) <- rownames(test_result) <- colnames(train_result) <- colnames(test_result) <- c("Dyr","Tomme")
+rownames(train_result) <- rownames(test_result) <- colnames(train_result) <- colnames(test_result) <- c("Animals","Empty")
 
 print(train_result)
 print(test_result)
 
-
-
 ```
 
-// Lirype test
-```{r}
-# Images with Lirype
-
-#Exploring dataset
-setwd("C:/Users/markus.israelsen/OneDrive - NINA/GBIF Viltkamera/Species Recognition/Lirype testbilder/Dyr")
-img = readImage("UmLak2020_7__2020-07-26__12-22-34(4).JPG")
-
-print(img) #same for all Reconyx images (3 channels, independent of BW or color), with dimensions (W) 2048 x (H) 1536 x (F) 3 (frames/channels)
-getFrames(img, type = "total") #unmasks all channels
-display(img, method = "raster", all = TRUE) #prints the image
-hist(img) #shows image histogram (RGB)
-
-dyr.samp = sample(dir()) #shuffles the order and adds the images from the set directory
-Dsamples = list(NULL)
-Dflopped = list(NULL)
-for(i in 1:length(dyr.samp)) { #NB! takes about 10 seconds for 50 regular images + creates a large list (10-15 MB) - must be scaled/portioned to handle 10000 images in the future
-  Dsamples[[i]] = readImage(dyr.samp[i]) #reads each image (in shuffled order)
-  #Dflopped[[i]] = flop(Dsamples[[i]])
-  Dsamples[[i]] = Dsamples[[i]][1:2048,32:1092,] #crop top and bottom black bars
-  #Dflopped[[i]] = Dflopped[[i]][1:2048, 32:1092,] # crop top and bottom black bars
-  Dsamples[[i]] = resize(Dsamples[[i]], 100, 100) #resize each image to 400x400 pixels
-  #Dflopped[[i]] = resize(Dflopped[[i]], 400, 400)
-  Dsamples[[i]] = channel(Dsamples[[i]], mode = "gray")
-}
-
-#Dsamples = append(Dsamples, Dflopped)
-Dsamples = sample(Dsamples)
-
-# Pictures with animals in a separate list 
-dyr = Dsamples 
-rm(Dsamples) # Remove unnecessary large variables from the environment
-rm(Dflopped) # Remove unnecessary large variables from the environment
-
-#NB! Keras needs all images to be 100x100 + all images to be combined in a stack (No Keras dont need it)
-setwd("C:/Users/markus.israelsen/OneDrive - NINA/GBIF Viltkamera/Species Recognition/Lirype testbilder/Tomme")
-tom.samp = list.files("C:/Users/markus.israelsen/OneDrive - NINA/GBIF Viltkamera/Species Recognition/Lirype testbilder/Tomme", pattern = ".JPG") # Make sure that all files are ".JPG"
-tom.samp = sample(tom.samp, 212) #shuffles the order and adds the images from the set directory
-
-Tsamples = list(NULL)
-for(i in 1:length(tom.samp)) { #NB! takes about 10 seconds for 50 regular images + creates a large list (10-15 MB) - must be scaled/portioned to handle 10000 images in the future
-  Tsamples[[i]] = readImage(tom.samp[i]) #reads each image (in shuffled order)
-  Tsamples[[i]] = Tsamples[[i]][1:2048, 32:1092,] #crop top and bottom black bars
-  Tsamples[[i]] = resize(Tsamples[[i]], 100, 100) #re-size each image to 400x400 pixels
-  Tsamples[[i]] = channel(Tsamples[[i]], mode = "gray")
-}
-
-# Pictures without animals in a separate list
-tomme = Tsamples
-rm(Tsamples) # Remove unnecessary large variables from the environment
-
-train_pool = c(dyr[1:200], tomme[1:200]) #vector of training images (400 first images of each list)
-
-train = aperm(combine(train_pool), c(4,1,2,3)) #combined and stacked training set of images
-train = combine(train_pool)
-
-# Remove unnecessary large variables from the environment
-rm(train_pool)
-
-test_pool = c(dyr[201:212], tomme[201:212]) #vector of test images (25 last images of each list)
-
-# Remove unnecessary large variables from the environment
-rm(dyr)
-rm(tomme)
-
-test = aperm(combine(test_pool), c(4,1,2,3)) #combined and stacked test set of images
-test = combine(test_pool)
-
-#View test-data
-par(mfrow=c(2,3))
-for(i in 1:6) {
-  plot(test_pool[[i]])
-}
-par(mfrow=c(1,1))
-
-#One Hot encoding - to create categorical vectors corresponding to input data
-train_y = c(rep(0, 200), rep(1, 200))
-test_y = c(rep(0, 12), rep(1, 12))
-train_lab = to_categorical(train_y) #categorical vector for training
-test_lab = to_categorical(test_y) #categorical vector for test classes
-
-## Building the architecture
-model.card = keras_model_sequential() #create Keras model
-model.card %>% #initiate model
-  layer_conv_2d(filters = 40, kernel_size = c(4,4), activation = 'relu', input_shape = c(400, 400,3)) %>% #first convoluted layer
-  layer_conv_2d(filters = 40, kernel_size = c(4,4), activation = 'relu') %>% #second convoluted layer
-  layer_max_pooling_2d(pool_size = c(4,4)) %>% #max pooling
-  layer_dropout(rate = 0.25) %>% #drop out layer
-  layer_conv_2d(filters = 80, kernel_size = c(4,4), activation = 'relu') %>% #third convoluted layer
-  layer_conv_2d(filters = 80, kernel_size = c(4,4), activation = 'relu') %>% #fourth convoluted layer
-  layer_max_pooling_2d(pool_size = c(4,4)) %>% #max pooling
-  layer_dropout(rate = 0.35) %>% #drop out layer
-  layer_flatten() %>% #flattening final stack of feature maps
-  layer_dense(units = 256, activation = 'relu') %>% #hidden layer
-  layer_dropout(rate = 0.25) %>% #drop out layer
-  layer_dense(units = 2, activation = "softmax") %>% #final layer
-  compile(loss = 'categorical_crossentropy',
-          optimizer = optimizer_adam(),
-          metrics = c("accuracy"))
-
-summary(model.card)
-
-## Model Fitting
-st = Sys.time()
-paste("Start:", st)
-histor = model.card %>%
-  fit(train, 
-      train_lab,
-      epochs = 100,
-      batch_size = 40,
-      validation_split = 0.2)
-et = Sys.time()
-paste("End:", et)
-paste("Model run time: ", round(difftime(et, st, units = "secs"), 2), " seconds", sep = "")
-
-plot(histor) #smooth plot of the training progress
-
-## Model validation
-model.card %>% evaluate(train, train_lab) #evaluation of the training set
-pred <- model.card %>% predict_classes(train) #classification
-train_result <- table(Predicted = pred, Actual = train_y) #results
-
-model.card %>% evaluate(test, test_lab) #evaluation of the test set
-pred1 <- model.card %>% predict_classes(test) #classification
-test_result <- table(Predicted = pred1, Actual = test_y) #results
-
-rownames(train_result) <- rownames(test_result) <- colnames(train_result) <- colnames(test_result) <- c("Dyr","Tomme")
-
-print(train_result)
-print(test_result)
-
-
-```
-
+BELOW NOT DONE
 Create an overarching species recognition function to test memory usage and time taken to complete
-```{r}
+```{r, eval = FALSE}
 
 speciesRecognition = function(animalDir, emptyDir, saturation){
 
@@ -561,7 +291,7 @@ return(histor, model.card, train_result, test_result, pred, pred1)
 ```
 
 Run the species recognition function
-```{r}
+```{r, eval = FALSE}
 
 # Store the image directories as variables and supply them to the species recognition function
 animalDir = "C:/Users/markus.israelsen/OneDrive - NINA/GBIF Viltkamera/Species Recognition/Lirype testbilder/Dyr"
